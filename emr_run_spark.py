@@ -170,9 +170,10 @@ def _wait_for_job_flow(aws_region, job_flow_id, step_ids=[]):
     for step_id in step_ids:
       step = client.describe_step(ClusterId=job_flow_id, StepId=step_id)
       step_state = step['Step']['Status']['State']
-      step_done = step_state in ['COMPLETED', 'FAILED']
-      step_failed = step_state == 'FAILED'
-      if step_state != 'COMPLETED':
+      step_failed = step_state in ['FAILED', 'TERMINATED_WITH_ERRORS']
+      step_success = step_state in ['COMPLETED']
+      step_done = step_success or step_failed
+      if not step_success:
         p.append('{} ({}) - {}'.format(step['Step']['Name'],
                                        step['Step']['Id'],
                                        step_state))
