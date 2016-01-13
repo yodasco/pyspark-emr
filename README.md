@@ -8,7 +8,8 @@ This will create a cluster and run your spark code on it, then terminate the clu
 python emr_run_spark.py \
   --aws_region=us-west-2 \
   --create_cluster \
-  --create_cluster_hosts_type=m3.xlarge \
+  --create_cluster_master_type=m3.xlarge \
+  --create_cluster_slave_type=m3.xlarge \
   --create_cluster_num_hosts=1 \
   --create_cluster_ec2_key_name=your-ec2-key-name \
   --create_cluster_ec2_subnet_id=your-subnet \

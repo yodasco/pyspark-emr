@@ -76,7 +76,7 @@ def _create_steps(job_flow_name=None,
       }
     },
     {
-      'Name': 'run spark '.format(spark_main),
+      'Name': 'run spark {}'.format(spark_main),
       'ActionOnFailure': 'CANCEL_AND_WAIT',
       'HadoopJarStep': {
         'Jar': 'command-runner.jar',
@@ -86,7 +86,8 @@ def _create_steps(job_flow_name=None,
     },
   ]
 
-def create_cluster_and_run_job_flow(create_cluster_hosts_type=None,
+def create_cluster_and_run_job_flow(create_cluster_master_type=None,
+                                    create_cluster_slave_type=None,
                                     create_cluster_num_hosts=1,
                                     create_cluster_ec2_key_name=None,
                                     create_cluster_ec2_subnet_id=None,
@@ -95,7 +96,8 @@ def create_cluster_and_run_job_flow(create_cluster_hosts_type=None,
                                     spark_main_args=None,
                                     s3_work_bucket=None,
                                     aws_region=None):
-  assert(create_cluster_hosts_type)
+  assert(create_cluster_master_type)
+  assert(create_cluster_slave_type)
   assert(aws_region)
 
   s3_logs_uri = 's3n://{}/logs/{}/'.format(s3_work_bucket, getpass.getuser())
@@ -111,8 +113,8 @@ def create_cluster_and_run_job_flow(create_cluster_hosts_type=None,
       LogUri=s3_logs_uri,
       ReleaseLabel='emr-4.2.0',
       Instances={
-        'MasterInstanceType': create_cluster_hosts_type,
-        'SlaveInstanceType': create_cluster_hosts_type,
+        'MasterInstanceType': create_cluster_master_type,
+        'SlaveInstanceType': create_cluster_slave_type,
         'InstanceCount': create_cluster_num_hosts,
         'Ec2KeyName': create_cluster_ec2_key_name,
         'KeepJobFlowAliveWhenNoSteps': False,
@@ -164,13 +166,14 @@ def _wait_for_job_flow(aws_region, job_flow_id, step_ids=[]):
     client = _get_client(aws_region)
     cluster = client.describe_cluster(ClusterId=job_flow_id)
     state = cluster['Cluster']['Status']['State']
+    state_failed = state in ['TERMINATED_WITH_ERRORS']
     p = []
     p.append('Cluster: {}'.format(state))
     all_done = True
     for step_id in step_ids:
       step = client.describe_step(ClusterId=job_flow_id, StepId=step_id)
       step_state = step['Step']['Status']['State']
-      step_failed = step_state in ['FAILED', 'TERMINATED_WITH_ERRORS']
+      step_failed = step_state in ['FAILED', 'CANCELLED']
       step_success = step_state in ['COMPLETED']
       step_done = step_success or step_failed
       if not step_success:
@@ -184,14 +187,17 @@ def _wait_for_job_flow(aws_region, job_flow_id, step_ids=[]):
     if all_done:
       print "All done"
       break
-
+    if state_failed:
+      print ">>>>>>>>>>>>>> FAILED <<<<<<<<<<<<<<<<<<"
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--create_cluster',
                       help='Create a new cluster (and destroy it when it is done',
                       action='store_true')
-  parser.add_argument('--create_cluster_hosts_type', help='Number of hosts',
+  parser.add_argument('--create_cluster_master_type', help='Number of hosts',
+                      default='m1.medium')
+  parser.add_argument('--create_cluster_slave_type', help='Number of hosts',
                       default='m3.xlarge')
   parser.add_argument('--create_cluster_num_hosts', help='Number of hosts',
                       type=int, default=1)
@@ -220,7 +226,8 @@ if __name__ == '__main__':
                          aws_region=args.aws_region)
   elif args.create_cluster:
     create_cluster_and_run_job_flow(
-        create_cluster_hosts_type=args.create_cluster_hosts_type,
+        create_cluster_master_type=args.create_cluster_master_type,
+        create_cluster_slave_type=args.create_cluster_slave_type,
         create_cluster_num_hosts=args.create_cluster_num_hosts,
         create_cluster_ec2_key_name=args.create_cluster_ec2_key_name,
         create_cluster_ec2_subnet_id=args.create_cluster_ec2_subnet_id,
