@@ -1,7 +1,7 @@
 # pyspark-emr
 A toolset to streamline running spark python on EMR
 
-## Running spark on a newly created cluster
+## Running spark on a newly created cluster (production)
 This will create a cluster and run your spark code on it, then terminate the cluster
 
 ```
@@ -15,10 +15,10 @@ python emr_run_spark.py \
   --python_path=/path/to/your/python/code \
   --s3_work_bucket=your-s3-bucket \
   --spark_main=your-spark-main-script.py \
-  --spark_main_args="arguments to your spark script "
+  --spark_main_args="arguments to your spark script"
 ```
 
-## Running spark on existing cluster (reuse)
+## Running spark on existing cluster (cluster reuse - useful for debug)
 This will use an existing cluster and run your spark code on it (useful for debug)
 ```
 python emr_run_spark.py \
@@ -27,5 +27,5 @@ python emr_run_spark.py \
   --python_path=/path/to/your/python/code \
   --s3_work_bucket=your-s3-bucket \
   --spark_main=your-spark-main-script.py \
-  --spark_main_args="arguments to your spark script "
+  --spark_main_args="arguments to your spark script"
 ```
