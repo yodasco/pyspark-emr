@@ -32,7 +32,9 @@ def add_step_to_job_flow(job_flow_id=None,
   _wait_for_job_flow(aws_region, job_flow_id, step_ids)
 
 def _create_job_flow_name(spark_main):
-  return '{}.{}.{}'.format(getpass.getuser(), spark_main, int(time.time()))
+  return '{}.{}.{}'.format(getpass.getuser(),
+                           spark_main,
+                           time.strftime("%H%M%S", time.gmtime()))
 
 def _create_steps(job_flow_name=None,
                   python_path=None,
