@@ -170,9 +170,10 @@ def _wait_for_job_flow(aws_region, job_flow_id, step_ids=[]):
       step_state = step['Step']['Status']['State']
       step_done = step_state in ['COMPLETED', 'FAILED']
       step_failed = step_state == 'FAILED'
-      p.append('{} ({}) - {}'.format(step['Step']['Name'],
-                                     step['Step']['Id'],
-                                     step_state))
+      if step_state != 'COMPLETED':
+        p.append('{} ({}) - {}'.format(step['Step']['Name'],
+                                       step['Step']['Id'],
+                                       step_state))
       all_done = all_done and step_done
       if step_failed:
         print '!!! STEP FAILED !!!'
