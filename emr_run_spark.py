@@ -197,6 +197,7 @@ def _wait_for_job_flow(aws_region, job_flow_id, step_ids=[]):
       break
     if state_failed:
       print ">>>>>>>>>>>>>> FAILED <<<<<<<<<<<<<<<<<<"
+      print "Error message: {}".format(cluster['Cluster']['Status']['Message'])
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
@@ -211,7 +212,7 @@ if __name__ == '__main__':
                       type=int, default=1)
   parser.add_argument('--create_cluster_ec2_key_name', help='Keyfile when you want to create a new cluster and connect to it')
   parser.add_argument('--create_cluster_ec2_subnet_id', help='')
-  parser.add_argument('--create_cluster_keep_alive_when_done', default=True,
+  parser.add_argument('--create_cluster_keep_alive_when_done', default=False,
                       action='store_true',
                       help='Terminate the cluster when execution is done')
   parser.add_argument('--create_cluster_setup_debug', default=True,
