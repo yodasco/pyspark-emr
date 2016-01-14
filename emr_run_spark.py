@@ -3,6 +3,9 @@ import boto3
 import subprocess
 import getpass
 import time
+import os
+import zipfile
+import tempfile
 
 def _get_client(aws_region):
   return boto3.client('emr', region_name=aws_region)
@@ -10,6 +13,7 @@ def _get_client(aws_region):
 def add_step_to_job_flow(job_flow_id=None,
                          python_path=None,
                          spark_main=None,
+                         py_files=None,
                          spark_main_args=None,
                          s3_work_bucket=None,
                          aws_region=None):
@@ -20,6 +24,7 @@ def add_step_to_job_flow(job_flow_id=None,
   steps = _create_steps(job_flow_name=job_flow_name,
                         python_path=python_path,
                         spark_main=spark_main,
+                        py_files=py_files,
                         spark_main_args=spark_main_args,
                         s3_work_bucket=s3_work_bucket)
   client = _get_client(aws_region)
@@ -36,9 +41,16 @@ def _create_job_flow_name(spark_main):
                            spark_main,
                            time.strftime("%H%M%S", time.gmtime()))
 
+def _ls_recursive(dir, suffix=None):
+  files = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(dir)) for f in fn]
+  if suffix:
+    files = filter(lambda f: f.endswith(suffix), files)
+  return files
+
 def _create_steps(job_flow_name=None,
                   python_path=None,
                   spark_main=None,
+                  py_files=[],
                   spark_main_args=None,
                   s3_work_bucket=None):
   assert(python_path)
@@ -46,18 +58,30 @@ def _create_steps(job_flow_name=None,
   assert(s3_work_bucket)
 
   zip_file = 'spark_zip.zip'
-  # TODO: Change these subprocess calls to use python native API instead of shell
-  subprocess.call('rm /tmp/{}'.format(zip_file), shell=True)
-  subprocess.check_call("cd {}; zip -r /tmp/{} . -i '*.py'".format(python_path, zip_file), shell=True)
   sources_rel_path = job_flow_name
+  sources_on_host = '/home/hadoop/{}'.format(sources_rel_path)
+  local_zip_file = '/tmp/{}'.format(zip_file)
+  python_path_files = _ls_recursive(python_path, '.py')
+  with zipfile.ZipFile(local_zip_file, 'w') as myzip:
+    for f in python_path_files:
+      myzip.write(f)
+    for py_file in py_files:
+      if py_file.endswith('.zip'):  # Currently only support sip files
+        with zipfile.ZipFile(py_file, 'r') as openzip:
+          [myzip.writestr(t[0], t[1].read()) for t in ((n, openzip.open(n))
+                                                       for n in openzip.namelist())]
   s3sources = 's3://{}/sources/{}'.format(s3_work_bucket, sources_rel_path)
   zip_file_on_s3 = '{}/{}'.format(s3sources, zip_file)
   print 'Storing python sources on {}'.format(s3sources)
-  subprocess.check_call('aws s3 cp /tmp/{} {}'.format(zip_file, zip_file_on_s3), shell=True)
-  sources_on_host = '/home/hadoop/{}'.format(sources_rel_path)
+  # TODO: Change these subprocess calls to use python native API instead of shell
+  subprocess.check_call('aws s3 cp {} {}'.format(local_zip_file, zip_file_on_s3), shell=True)
   zip_file_on_host = '{}/{}'.format(sources_on_host, zip_file)
   spark_main_on_host = '{}/{}'.format(sources_on_host, spark_main)
   spark_main_args = spark_main_args.split() if spark_main_args else ['']
+
+  spark_submit_args = ['spark-submit', '--py-files', zip_file_on_host]
+  spark_submit_args.append(spark_main_on_host)
+  spark_submit_args += spark_main_args
   return [
     {
       'Name': 'setup - copy files',
@@ -81,7 +105,7 @@ def _create_steps(job_flow_name=None,
       'HadoopJarStep': {
         'Jar': 'command-runner.jar',
         'Args': ['spark-submit', '--py-files', zip_file_on_host,
-            spark_main_on_host] + spark_main_args
+                 spark_main_on_host] + spark_main_args
       }
     },
   ]
@@ -110,6 +134,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     create_cluster_keep_alive_when_done=None,
                                     python_path=None,
                                     spark_main=None,
+                                    py_files=None,
                                     spark_main_args=None,
                                     s3_work_bucket=None,
                                     aws_region=None):
@@ -122,6 +147,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
   steps = _create_steps(job_flow_name=job_flow_name,
                         python_path=python_path,
                         spark_main=spark_main,
+                        py_files=py_files,
                         spark_main_args=spark_main_args,
                         s3_work_bucket=s3_work_bucket)
   client = _get_client(aws_region)
@@ -231,6 +257,8 @@ if __name__ == '__main__':
                       help='Arguments passed to your spark script')
   parser.add_argument('--s3_work_bucket', required=True,
                       help='Name of s3 bucket where sources and logs are uploaded')
+  parser.add_argument('--py-files', nargs='*', dest='py_files',
+                      help='A list of py or zip or egg files to pass over to spark-submit')
   args = parser.parse_args()
 
   if args.job_flow_id:
@@ -238,6 +266,7 @@ if __name__ == '__main__':
                          python_path=args.python_path,
                          spark_main=args.spark_main,
                          spark_main_args=args.spark_main_args,
+                         py_files=args.py_files,
                          s3_work_bucket=args.s3_work_bucket,
                          aws_region=args.aws_region)
   elif args.create_cluster:
@@ -251,6 +280,7 @@ if __name__ == '__main__':
         create_cluster_keep_alive_when_done=args.create_cluster_keep_alive_when_done,
         python_path=args.python_path,
         spark_main=args.spark_main,
+        py_files=args.py_files,
         spark_main_args=args.spark_main_args,
         s3_work_bucket=args.s3_work_bucket,
         aws_region=args.aws_region)
