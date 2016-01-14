@@ -86,11 +86,27 @@ def _create_steps(job_flow_name=None,
     },
   ]
 
+def _create_debug_steps(setup_debug):
+  if setup_debug:
+    return [
+      {
+        'Name': 'Setup Debugging',
+        'ActionOnFailure': 'TERMINATE_CLUSTER',
+        'HadoopJarStep': {
+            'Jar': 'command-runner.jar',
+            'Args': ['state-pusher-script']
+        }
+      },
+    ]
+  else:
+    return []
+
 def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     create_cluster_slave_type=None,
                                     create_cluster_num_hosts=1,
                                     create_cluster_ec2_key_name=None,
                                     create_cluster_ec2_subnet_id=None,
+                                    create_cluster_setup_debug=None,
                                     python_path=None,
                                     spark_main=None,
                                     spark_main_args=None,
@@ -108,6 +124,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                         spark_main_args=spark_main_args,
                         s3_work_bucket=s3_work_bucket)
   client = _get_client(aws_region)
+  debug_steps = _create_debug_steps(create_cluster_setup_debug)
   response = client.run_job_flow(
       Name=job_flow_name,
       LogUri=s3_logs_uri,
@@ -121,16 +138,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
         'TerminationProtected': False,
         'Ec2SubnetId': create_cluster_ec2_subnet_id,
       },
-      Steps=[
-        {
-          'Name': 'Setup Debugging',
-          'ActionOnFailure': 'TERMINATE_CLUSTER',
-          'HadoopJarStep': {
-              'Jar': 'command-runner.jar',
-              'Args': ['state-pusher-script']
-          }
-        },
-      ] + steps,
+      Steps=debug_steps + steps,
       Applications=[{'Name': 'Ganglia'}, {'Name': 'Spark'}],
       Configurations=[
         {
@@ -176,13 +184,12 @@ def _wait_for_job_flow(aws_region, job_flow_id, step_ids=[]):
       step_failed = step_state in ['FAILED', 'CANCELLED']
       step_success = step_state in ['COMPLETED']
       step_done = step_success or step_failed
+      step_name = step['Step']['Name']
       if not step_success:
-        p.append('{} ({}) - {}'.format(step['Step']['Name'],
-                                       step['Step']['Id'],
-                                       step_state))
+        p.append('{} ({}) - {}'.format(step_name, step_id, step_state))
       all_done = all_done and step_done
       if step_failed:
-        print '!!! STEP FAILED !!!'
+        print '!!! STEP FAILED: {} ({})'.format(step_name, step_id)
     print '\t'.join(p)
     if all_done:
       print "All done"
@@ -203,6 +210,10 @@ if __name__ == '__main__':
                       type=int, default=1)
   parser.add_argument('--create_cluster_ec2_key_name', help='Keyfile when you want to create a new cluster and connect to it')
   parser.add_argument('--create_cluster_ec2_subnet_id', help='')
+  parser.add_argument('--create_cluster_setup_debug', default=True
+                      help='Whether to setup the cluster for debugging',
+                      action='store_true')
+
   parser.add_argument('--aws_region', help='AWS region', required=True)
 
   parser.add_argument('--job_flow_id',
@@ -231,6 +242,7 @@ if __name__ == '__main__':
         create_cluster_num_hosts=args.create_cluster_num_hosts,
         create_cluster_ec2_key_name=args.create_cluster_ec2_key_name,
         create_cluster_ec2_subnet_id=args.create_cluster_ec2_subnet_id,
+        create_cluster_setup_debug=args.create_cluster_setup_debug,
         python_path=args.python_path,
         spark_main=args.spark_main,
         spark_main_args=args.spark_main_args,
