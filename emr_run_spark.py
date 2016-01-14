@@ -107,6 +107,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     create_cluster_ec2_key_name=None,
                                     create_cluster_ec2_subnet_id=None,
                                     create_cluster_setup_debug=None,
+                                    create_cluster_keep_alive_when_done=None,
                                     python_path=None,
                                     spark_main=None,
                                     spark_main_args=None,
@@ -134,7 +135,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
         'SlaveInstanceType': create_cluster_slave_type,
         'InstanceCount': create_cluster_num_hosts,
         'Ec2KeyName': create_cluster_ec2_key_name,
-        'KeepJobFlowAliveWhenNoSteps': False,
+        'KeepJobFlowAliveWhenNoSteps': create_cluster_keep_alive_when_done,
         'TerminationProtected': False,
         'Ec2SubnetId': create_cluster_ec2_subnet_id,
       },
@@ -210,7 +211,10 @@ if __name__ == '__main__':
                       type=int, default=1)
   parser.add_argument('--create_cluster_ec2_key_name', help='Keyfile when you want to create a new cluster and connect to it')
   parser.add_argument('--create_cluster_ec2_subnet_id', help='')
-  parser.add_argument('--create_cluster_setup_debug', default=True
+  parser.add_argument('--create_cluster_keep_alive_when_done', default=True,
+                      action='store_true',
+                      help='Terminate the cluster when execution is done')
+  parser.add_argument('--create_cluster_setup_debug', default=True,
                       help='Whether to setup the cluster for debugging',
                       action='store_true')
 
@@ -243,6 +247,7 @@ if __name__ == '__main__':
         create_cluster_ec2_key_name=args.create_cluster_ec2_key_name,
         create_cluster_ec2_subnet_id=args.create_cluster_ec2_subnet_id,
         create_cluster_setup_debug=args.create_cluster_setup_debug,
+        create_cluster_keep_alive_when_done=args.create_cluster_keep_alive_when_done,
         python_path=args.python_path,
         spark_main=args.spark_main,
         spark_main_args=args.spark_main_args,
