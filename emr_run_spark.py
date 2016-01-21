@@ -70,12 +70,13 @@ def _create_steps(job_flow_name=None,
     with zipfile.ZipFile(local_zip_file, 'w') as myzip:
         for f in python_path_files:
             myzip.write(f)
-        for py_file in py_files:
-            if py_file.endswith('.zip'):  # Currently only support sip files
-                with zipfile.ZipFile(py_file, 'r') as openzip:
-                    [myzip.writestr(t[0], t[1].read())
-                     for t in ((n, openzip.open(n))
-                     for n in openzip.namelist())]
+        if py_files:
+          for py_file in py_files:
+              if py_file.endswith('.zip'):  # Currently only support sip files
+                  with zipfile.ZipFile(py_file, 'r') as openzip:
+                      [myzip.writestr(t[0], t[1].read())
+                       for t in ((n, openzip.open(n))
+                       for n in openzip.namelist())]
     s3sources = 's3://{}/sources/{}'.format(s3_work_bucket, sources_rel_path)
     zip_file_on_s3 = '{}/{}'.format(s3sources, zip_file)
     print 'Storing python sources on {}'.format(s3sources)
