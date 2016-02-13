@@ -5,7 +5,6 @@ import getpass
 import time
 import os
 import zipfile
-import tempfile
 
 
 def _get_client(aws_region):
@@ -195,6 +194,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
     step_ids = _get_step_ids_for_job_flow(job_flow_id, client)
     print 'Created Job steps: {}'.format(step_ids)
     print "Waiting for steps to finish. Visit on aws portal: https://{0}.console.aws.amazon.com/elasticmapreduce/home?region={0}#cluster-details:{1}".format(aws_region, job_flow_id)
+    print "Find logs here: {0}{1}/".format(s3_logs_uri, job_flow_id)
     _wait_for_job_flow(aws_region, job_flow_id, step_ids)
 
 
