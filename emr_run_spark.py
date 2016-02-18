@@ -331,7 +331,7 @@ if __name__ == '__main__':
             python_path=args.python_path,
             spark_main=args.spark_main,
             py_files=args.py_files,
-            use_mysql=use_mysql,
+            use_mysql=args.use_mysql,
             spark_main_args=args.spark_main_args,
             s3_work_bucket=args.s3_work_bucket,
             aws_region=args.aws_region)
