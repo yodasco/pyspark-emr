@@ -15,6 +15,7 @@ def add_step_to_job_flow(job_flow_id=None,
                          python_path=None,
                          spark_main=None,
                          py_files=None,
+                         use_mysql=False,
                          spark_main_args=None,
                          s3_work_bucket=None,
                          aws_region=None):
@@ -26,6 +27,7 @@ def add_step_to_job_flow(job_flow_id=None,
                           python_path=python_path,
                           spark_main=spark_main,
                           py_files=py_files,
+                          use_mysql=use_mysql,
                           spark_main_args=spark_main_args,
                           s3_work_bucket=s3_work_bucket)
     client = _get_client(aws_region)
@@ -56,7 +58,8 @@ def _create_steps(job_flow_name=None,
                   spark_main=None,
                   py_files=[],
                   spark_main_args=None,
-                  s3_work_bucket=None):
+                  s3_work_bucket=None,
+                  use_mysql=False):
     assert(python_path)
     assert(spark_main)
     assert(s3_work_bucket)
@@ -85,36 +88,61 @@ def _create_steps(job_flow_name=None,
     spark_main_on_host = '{}/{}'.format(sources_on_host, spark_main)
     spark_main_args = spark_main_args.split() if spark_main_args else ['']
 
-    spark_submit_args = ['spark-submit', '--py-files', zip_file_on_host]
-    spark_submit_args.append(spark_main_on_host)
-    spark_submit_args += spark_main_args
-    return [
-      {
-        'Name': 'setup - copy files',
+    steps = []
+    steps.append({
+      'Name': 'setup - copy files',
+      'ActionOnFailure': 'CANCEL_AND_WAIT',
+      'HadoopJarStep': {
+        'Jar': 'command-runner.jar',
+        'Args': ['aws', 's3', 'cp', zip_file_on_s3, sources_on_host + '/']
+      }
+    })
+    steps.append({
+      'Name': 'setup - extract files',
+      'ActionOnFailure': 'CANCEL_AND_WAIT',
+      'HadoopJarStep': {
+        'Jar': 'command-runner.jar',
+        'Args': ['unzip', zip_file_on_host, '-d', sources_on_host]
+      }
+    })
+    if use_mysql:
+      steps.append({
+        'Name': 'setup - jars 1',
         'ActionOnFailure': 'CANCEL_AND_WAIT',
         'HadoopJarStep': {
           'Jar': 'command-runner.jar',
-          'Args': ['aws', 's3', 'cp', zip_file_on_s3, sources_on_host + '/']
+          'Args': 'touch /home/hadoop/noop.py'.split()
         }
-      },
-      {
-        'Name': 'setup - extract files',
+      })
+      steps.append({
+        'Name': 'setup - jars 2',
         'ActionOnFailure': 'CANCEL_AND_WAIT',
         'HadoopJarStep': {
           'Jar': 'command-runner.jar',
-          'Args': ['unzip', zip_file_on_host, '-d', sources_on_host]
+          'Args': 'spark-submit --packages mysql:mysql-connector-java:5.1.38 /home/hadoop/noop.py'.split()
         }
-      },
-      {
-        'Name': 'run spark {}'.format(spark_main),
+      })
+      steps.append({
+        'Name': 'setup - jars 3',
         'ActionOnFailure': 'CANCEL_AND_WAIT',
         'HadoopJarStep': {
           'Jar': 'command-runner.jar',
-          'Args': ['spark-submit', '--py-files', zip_file_on_host,
-                   spark_main_on_host] + spark_main_args
+          'Args': 'sudo cp /home/hadoop/.ivy2/jars/mysql_mysql-connector-java-5.1.38.jar /usr/lib/hadoop/'.split()
         }
-      },
-    ]
+      })
+    steps.append({
+      'Name': 'run spark {}'.format(spark_main),
+      'ActionOnFailure': 'CANCEL_AND_WAIT',
+      'HadoopJarStep': {
+        'Jar': 'command-runner.jar',
+        'Args': ['spark-submit', '--packages',
+                 'mysql:mysql-connector-java:5.1.38', '--py-files',
+                 zip_file_on_host,
+                 spark_main_on_host] + spark_main_args
+      }
+    })
+
+    return steps
 
 
 def _create_debug_steps(setup_debug):
@@ -145,6 +173,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     py_files=None,
                                     spark_main_args=None,
                                     s3_work_bucket=None,
+                                    use_mysql=False,
                                     aws_region=None):
     assert(create_cluster_master_type)
     assert(create_cluster_slave_type)
@@ -157,7 +186,8 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                           spark_main=spark_main,
                           py_files=py_files,
                           spark_main_args=spark_main_args,
-                          s3_work_bucket=s3_work_bucket)
+                          s3_work_bucket=s3_work_bucket,
+                          use_mysql=use_mysql)
     client = _get_client(aws_region)
     debug_steps = _create_debug_steps(create_cluster_setup_debug)
     response = client.run_job_flow(
@@ -186,14 +216,14 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
         VisibleToAllUsers=True,
         JobFlowRole='EMR_EC2_DefaultRole',
         ServiceRole='EMR_DefaultRole',
-        Tags=[{'Key': 'Name', 'Value': spark_main},
-      ]
+        Tags=[{'Key': 'Name', 'Value': spark_main}]
     )
     job_flow_id = response['JobFlowId']
     print 'Created Job Flow: {}'.format(job_flow_id)
     step_ids = _get_step_ids_for_job_flow(job_flow_id, client)
     print 'Created Job steps: {}'.format(step_ids)
-    print "Waiting for steps to finish. Visit on aws portal: https://{0}.console.aws.amazon.com/elasticmapreduce/home?region={0}#cluster-details:{1}".format(aws_region, job_flow_id)
+    print '''Waiting for steps to finish. Visit on aws portal:
+        https://{0}.console.aws.amazon.com/elasticmapreduce/home?region={0}#cluster-details:{1}'''.format(aws_region, job_flow_id)
     print "Find logs here: {0}{1}/".format(s3_logs_uri, job_flow_id)
     _wait_for_job_flow(aws_region, job_flow_id, step_ids)
 
@@ -232,12 +262,14 @@ def _wait_for_job_flow(aws_region, job_flow_id, step_ids=[]):
             break
         if state_failed:
             print ">>>>>>>>>>>>>>>> FAILED <<<<<<<<<<<<<<<<<<"
-            print "Error message: {}".format(cluster['Cluster']['Status']['Message'])
+            print "Error message: {}".format(cluster['Cluster']
+                                             ['Status']['Message'])
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--create_cluster',
-                        help='Create a new cluster (and destroy it when it is done',
+                        help='Create a new cluster (and destroy it when it ' +
+                             'is done',
                         action='store_true')
     parser.add_argument('--create_cluster_master_type', help='Number of hosts',
                         default='m1.medium')
@@ -245,7 +277,8 @@ if __name__ == '__main__':
                         default='m3.xlarge')
     parser.add_argument('--create_cluster_num_hosts', help='Number of hosts',
                         type=int, default=1)
-    parser.add_argument('--create_cluster_ec2_key_name', help='Keyfile when you want to create a new cluster and connect to it')
+    parser.add_argument('--create_cluster_ec2_key_name', help='Keyfile when ' +
+                        'you want to create a new cluster and connect to it')
     parser.add_argument('--create_cluster_ec2_subnet_id', help='')
     parser.add_argument('--create_cluster_keep_alive_when_done', default=False,
                         action='store_true',
@@ -259,15 +292,22 @@ if __name__ == '__main__':
     parser.add_argument('--job_flow_id',
                         help='Job flow ID (EMR cluster) to submit to')
     parser.add_argument('--python_path', required=True,
-                        help='Path to python files to zip and upload to the server and add to the python path. This should include the python_main file`')
+                        help='Path to python files to zip and upload to the' +
+                        ' server and add to the python path. This should ' +
+                        'include the python_main file`')
     parser.add_argument('--spark_main', required=True,
                         help='Main python file for spark')
     parser.add_argument('--spark_main_args',
                         help='Arguments passed to your spark script')
     parser.add_argument('--s3_work_bucket', required=True,
-                        help='Name of s3 bucket where sources and logs are uploaded')
+                        help='Name of s3 bucket where sources and logs are ' +
+                        'uploaded')
     parser.add_argument('--py-files', nargs='*', dest='py_files',
-                        help='A list of py or zip or egg files to pass over to spark-submit')
+                        help='A list of py or zip or egg files to pass over ' +
+                        'to spark-submit')
+    parser.add_argument('--use_mysql', default=False,
+                        help='Whether to setup mysql dataframes jar',
+                        action='store_true')
     args = parser.parse_args()
 
     if args.job_flow_id:
@@ -276,6 +316,7 @@ if __name__ == '__main__':
                              spark_main=args.spark_main,
                              spark_main_args=args.spark_main_args,
                              py_files=args.py_files,
+                             use_mysql=args.use_mysql,
                              s3_work_bucket=args.s3_work_bucket,
                              aws_region=args.aws_region)
     elif args.create_cluster:
@@ -290,6 +331,7 @@ if __name__ == '__main__':
             python_path=args.python_path,
             spark_main=args.spark_main,
             py_files=args.py_files,
+            use_mysql=use_mysql,
             spark_main_args=args.spark_main_args,
             s3_work_bucket=args.s3_work_bucket,
             aws_region=args.aws_region)
