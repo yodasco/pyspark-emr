@@ -18,7 +18,8 @@ def add_step_to_job_flow(job_flow_id=None,
                          use_mysql=False,
                          spark_main_args=None,
                          s3_work_bucket=None,
-                         aws_region=None):
+                         aws_region=None,
+                         send_success_email_to=None):
     assert(job_flow_id)
     assert(aws_region)
 
@@ -29,7 +30,8 @@ def add_step_to_job_flow(job_flow_id=None,
                           py_files=py_files,
                           use_mysql=use_mysql,
                           spark_main_args=spark_main_args,
-                          s3_work_bucket=s3_work_bucket)
+                          s3_work_bucket=s3_work_bucket,
+                          send_success_email_to=send_success_email_to)
     client = _get_client(aws_region)
     step_response = client.add_job_flow_steps(
       JobFlowId=job_flow_id,
@@ -59,7 +61,8 @@ def _create_steps(job_flow_name=None,
                   py_files=[],
                   spark_main_args=None,
                   s3_work_bucket=None,
-                  use_mysql=False):
+                  use_mysql=False,
+                  send_success_email_to=None):
     assert(python_path)
     assert(spark_main)
     assert(s3_work_bucket)
@@ -142,6 +145,18 @@ def _create_steps(job_flow_name=None,
       }
     })
 
+    if send_success_email_to is not None:
+        steps.append({
+          'Name': 'Send success email to {}'.format(send_success_email_to),
+          'ActionOnFailure': 'CANCEL_AND_WAIT',
+          'HadoopJarStep': {
+            'Jar': 'command-runner.jar',
+            'Args': ['aws', 'ses', 'send-email', '--from', 'ops@yodas.com',
+                     '--to', send_success_email_to, '--subject',
+                     'EMR COMPLETED SUCCESSFULY', '--text', 'Life is good']
+          }
+        })
+
     return steps
 
 
@@ -174,7 +189,8 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     spark_main_args=None,
                                     s3_work_bucket=None,
                                     use_mysql=False,
-                                    aws_region=None):
+                                    aws_region=None,
+                                    send_success_email_to=None):
     assert(create_cluster_master_type)
     assert(create_cluster_slave_type)
     assert(aws_region)
@@ -187,7 +203,8 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                           py_files=py_files,
                           spark_main_args=spark_main_args,
                           s3_work_bucket=s3_work_bucket,
-                          use_mysql=use_mysql)
+                          use_mysql=use_mysql,
+                          send_success_email_to=send_success_email_to)
     client = _get_client(aws_region)
     debug_steps = _create_debug_steps(create_cluster_setup_debug)
     response = client.run_job_flow(
@@ -308,6 +325,9 @@ if __name__ == '__main__':
     parser.add_argument('--use_mysql', default=False,
                         help='Whether to setup mysql dataframes jar',
                         action='store_true')
+    parser.add_argument('--send_success_email_to', default=None,
+                        help='Email address to send on success')
+
     args = parser.parse_args()
 
     if args.job_flow_id:
@@ -318,7 +338,8 @@ if __name__ == '__main__':
                              py_files=args.py_files,
                              use_mysql=args.use_mysql,
                              s3_work_bucket=args.s3_work_bucket,
-                             aws_region=args.aws_region)
+                             aws_region=args.aws_region,
+                             send_success_email_to=args.send_success_email_to)
     elif args.create_cluster:
         create_cluster_and_run_job_flow(
             create_cluster_master_type=args.create_cluster_master_type,
@@ -334,7 +355,8 @@ if __name__ == '__main__':
             use_mysql=args.use_mysql,
             spark_main_args=args.spark_main_args,
             s3_work_bucket=args.s3_work_bucket,
-            aws_region=args.aws_region)
+            aws_region=args.aws_region,
+            send_success_email_to=args.send_success_email_to)
     else:
         print "Nothing to do"
         parser.print_help()
