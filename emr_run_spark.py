@@ -210,7 +210,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
     response = client.run_job_flow(
         Name=job_flow_name,
         LogUri=s3_logs_uri,
-        ReleaseLabel='emr-4.2.0',
+        ReleaseLabel='emr-4.3.0',
         Instances={
           'MasterInstanceType': create_cluster_master_type,
           'SlaveInstanceType': create_cluster_slave_type,
