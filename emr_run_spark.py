@@ -90,6 +90,10 @@ def _create_steps(job_flow_name=None,
     zip_file_on_host = '{}/{}'.format(sources_on_host, zip_file)
     spark_main_on_host = '{}/{}'.format(sources_on_host, spark_main)
     spark_main_args = spark_main_args.split() if spark_main_args else ['']
+    packages_to_add = []
+    if use_mysql:
+        packages_to_add.append('mysql:mysql-connector-java:5.1.39')
+    packages = ['--packages'] + packages_to_add if packages_to_add else []
 
     steps = []
     steps.append({
@@ -113,10 +117,10 @@ def _create_steps(job_flow_name=None,
       'ActionOnFailure': 'CANCEL_AND_WAIT',
       'HadoopJarStep': {
         'Jar': 'command-runner.jar',
-        'Args': ['spark-submit', '--packages',
-                 'mysql:mysql-connector-java:5.1.39', '--py-files',
-                 zip_file_on_host,
-                 spark_main_on_host] + spark_main_args
+        'Args': (['spark-submit'] +
+                 packages +
+                 ['--py-files', zip_file_on_host, spark_main_on_host] +
+                 spark_main_args)
       }
     })
 
@@ -207,7 +211,8 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
           {
             "Classification": "spark-defaults",
             "Properties": {
-               "spark.dynamicAllocation.enabled": "true"
+               "spark.dynamicAllocation.enabled": "true",
+               "spark.executor.instances": "0"
             }
           }
         ],
