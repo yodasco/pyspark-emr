@@ -89,7 +89,7 @@ def _create_steps(job_flow_name=None,
     subprocess.check_call('aws s3 cp {} {}'.format(local_zip_file, zip_file_on_s3), shell=True)
     zip_file_on_host = '{}/{}'.format(sources_on_host, zip_file)
     spark_main_on_host = '{}/{}'.format(sources_on_host, spark_main)
-    spark_main_args = spark_main_args.split() if spark_main_args else ['']
+    # spark_main_args = spark_main_args.split() if spark_main_args else ['']
     packages_to_add = []
     if use_mysql:
         packages_to_add.append('mysql:mysql-connector-java:5.1.39')
@@ -112,17 +112,18 @@ def _create_steps(job_flow_name=None,
         'Args': ['unzip', zip_file_on_host, '-d', sources_on_host]
       }
     })
-    steps.append({
-      'Name': 'run spark {}'.format(spark_main),
-      'ActionOnFailure': 'CANCEL_AND_WAIT',
-      'HadoopJarStep': {
-        'Jar': 'command-runner.jar',
-        'Args': (['spark-submit'] +
-                 packages +
-                 ['--py-files', zip_file_on_host, spark_main_on_host] +
-                 spark_main_args)
-      }
-    })
+    for i in range(20):
+        steps.append({
+          'Name': 'run spark {}'.format(spark_main),
+          'ActionOnFailure': 'CANCEL_AND_WAIT',
+          'HadoopJarStep': {
+            'Jar': 'command-runner.jar',
+            'Args': (['spark-submit'] +
+                     packages +
+                     ['--py-files', zip_file_on_host, spark_main_on_host] +
+                     spark_main_args.format('{:0>3}'.format(i)).split())
+          }
+        })
 
     if send_success_email_to is not None:
         steps.append({
