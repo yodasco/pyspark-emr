@@ -5,6 +5,8 @@ import getpass
 import time
 import os
 import zipfile
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
 
 def _get_client(aws_region):
@@ -23,7 +25,7 @@ def add_step_to_job_flow(job_flow_id=None,
     assert(job_flow_id)
     assert(aws_region)
 
-    job_flow_name = _create_job_flow_name(spark_main)
+    job_flow_name = _create_job_flow_name('airflow')
     steps = _create_steps(job_flow_name=job_flow_name,
                           python_path=python_path,
                           spark_main=spark_main,
@@ -35,7 +37,7 @@ def add_step_to_job_flow(job_flow_id=None,
     client = _get_client(aws_region)
     step_response = client.add_job_flow_steps(
       JobFlowId=job_flow_id,
-      Steps=steps
+      Steps=_create_debug_steps() + steps
     )
     step_ids = step_response['StepIds']
     print "Created steps: {}".format(step_ids)
@@ -139,21 +141,73 @@ def _create_steps(job_flow_name=None,
     return steps
 
 
-def _create_debug_steps(setup_debug):
-    if setup_debug:
-        return [
+def _create_debug_steps():
+    return [
+            {
+                'Name': 'Setup Debugging',
+                'ActionOnFailure': 'TERMINATE_CLUSTER',
+                'HadoopJarStep': {
+                    'Jar': 'command-runner.jar',
+                    'Args': ['state-pusher-script']
+                    }
+                },
+            ]
+
+
+def create_cluster(create_cluster_master_type=None,
+                   create_cluster_slave_type=None,
+                   create_cluster_num_hosts=1,
+                   create_cluster_ec2_key_name=None,
+                   create_cluster_ec2_subnet_id=None,
+                   create_cluster_setup_debug=None,
+                   create_cluster_keep_alive_when_done=None,
+                   use_mysql=False,
+                   s3_work_bucket=None,
+                   aws_region=None):
+
+    # assert(create_cluster_master_type)
+    # assert(create_cluster_slave_type)
+    # assert(aws_region)
+    s3_logs_uri = 's3n://{}/logs/{}/'.format(s3_work_bucket, getpass.getuser())
+    job_flow_name = _create_job_flow_name('airflow')
+    client = _get_client(aws_region)
+    response = client.run_job_flow(
+        Name=job_flow_name,
+        LogUri=s3_logs_uri,
+        ReleaseLabel='emr-4.6.0',
+        Instances={
+          'MasterInstanceType': create_cluster_master_type,
+          'SlaveInstanceType': create_cluster_slave_type,
+          'InstanceCount': create_cluster_num_hosts,
+          'Ec2KeyName': create_cluster_ec2_key_name,
+          'KeepJobFlowAliveWhenNoSteps': create_cluster_keep_alive_when_done,
+          'TerminationProtected': False,
+          'Ec2SubnetId': create_cluster_ec2_subnet_id,
+        },
+        Applications=[{'Name': 'Ganglia'}, {'Name': 'Spark'}],
+        Configurations=[
           {
-            'Name': 'Setup Debugging',
-            'ActionOnFailure': 'TERMINATE_CLUSTER',
-            'HadoopJarStep': {
-                'Jar': 'command-runner.jar',
-                'Args': ['state-pusher-script']
+            'Classification': 'spark',
+            'Properties': {
+               'maximizeResourceAllocation': 'true'
             }
           },
-        ]
-    else:
-        return []
-
+          {
+            "Classification": "spark-defaults",
+            "Properties": {
+               "spark.dynamicAllocation.enabled": "true",
+               "spark.executor.instances": "0"
+            }
+          }
+        ],
+        VisibleToAllUsers=True,
+        JobFlowRole='EMR_EC2_DefaultRole',
+        ServiceRole='EMR_DefaultRole'
+    )
+    job_flow_id = response['JobFlowId']
+    logging.info('Created Job Flow: {}'.format(job_flow_id))
+    _wait_for_job_flow(aws_region, job_flow_id)
+    return job_flow_id
 
 def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     create_cluster_slave_type=None,
@@ -170,9 +224,9 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     use_mysql=False,
                                     aws_region=None,
                                     send_success_email_to=None):
-    assert(create_cluster_master_type)
-    assert(create_cluster_slave_type)
-    assert(aws_region)
+    # assert(create_cluster_master_type)
+    # assert(create_cluster_slave_type)
+    # assert(aws_region)
 
     s3_logs_uri = 's3n://{}/logs/{}/'.format(s3_work_bucket, getpass.getuser())
     job_flow_name = _create_job_flow_name(spark_main)
@@ -185,7 +239,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                           use_mysql=use_mysql,
                           send_success_email_to=send_success_email_to)
     client = _get_client(aws_region)
-    debug_steps = _create_debug_steps(create_cluster_setup_debug)
+    debug_steps = _create_debug_steps()
     response = client.run_job_flow(
         Name=job_flow_name,
         LogUri=s3_logs_uri,
@@ -238,9 +292,9 @@ def _get_step_ids_for_job_flow(job_flow_id, client):
 
 
 def _wait_for_job_flow(aws_region, job_flow_id, step_ids=[]):
+    client = _get_client(aws_region)
     while True:
-        time.sleep(5)
-        client = _get_client(aws_region)
+        time.sleep(60)
         cluster = client.describe_cluster(ClusterId=job_flow_id)
         state = cluster['Cluster']['Status']['State']
         state_failed = state in ['TERMINATED_WITH_ERRORS']
@@ -260,8 +314,8 @@ def _wait_for_job_flow(aws_region, job_flow_id, step_ids=[]):
             if step_failed:
                 print '!!! STEP FAILED: {} ({})'.format(step_name, step_id)
         print '\t'.join(p)
-        if all_done:
-            print "All done"
+        if all_done and cluster['Cluster']['Status']['State'] == 'WAITING':
+            logging.info("All done")
             break
         if state_failed:
             print ">>>>>>>>>>>>>>>> FAILED <<<<<<<<<<<<<<<<<<"
@@ -286,23 +340,23 @@ if __name__ == '__main__':
     parser.add_argument('--create_cluster_keep_alive_when_done', default=False,
                         action='store_true',
                         help='Terminate the cluster when execution is done')
-    parser.add_argument('--create_cluster_setup_debug', default=True,
+    parser.add_argument('--create_cluster_setup_debug', default=False,
                         help='Whether to setup the cluster for debugging',
                         action='store_true')
 
-    parser.add_argument('--aws_region', help='AWS region', required=True)
+    parser.add_argument('--aws_region', help='AWS region', required=False)
 
     parser.add_argument('--job_flow_id',
                         help='Job flow ID (EMR cluster) to submit to')
-    parser.add_argument('--python_path', required=True,
+    parser.add_argument('--python_path',
                         help='Path to python files to zip and upload to the' +
                         ' server and add to the python path. This should ' +
                         'include the python_main file`')
-    parser.add_argument('--spark_main', required=True,
+    parser.add_argument('--spark_main',
                         help='Main python file for spark')
     parser.add_argument('--spark_main_args',
                         help='Arguments passed to your spark script')
-    parser.add_argument('--s3_work_bucket', required=True,
+    parser.add_argument('--s3_work_bucket', required=False,
                         help='Name of s3 bucket where sources and logs are ' +
                         'uploaded')
     parser.add_argument('--py-files', nargs='*', dest='py_files',
@@ -327,7 +381,7 @@ if __name__ == '__main__':
                              aws_region=args.aws_region,
                              send_success_email_to=args.send_success_email_to)
     elif args.create_cluster:
-        create_cluster_and_run_job_flow(
+        create_cluster(
             create_cluster_master_type=args.create_cluster_master_type,
             create_cluster_slave_type=args.create_cluster_slave_type,
             create_cluster_num_hosts=args.create_cluster_num_hosts,
@@ -335,14 +389,8 @@ if __name__ == '__main__':
             create_cluster_ec2_subnet_id=args.create_cluster_ec2_subnet_id,
             create_cluster_setup_debug=args.create_cluster_setup_debug,
             create_cluster_keep_alive_when_done=args.create_cluster_keep_alive_when_done,
-            python_path=args.python_path,
-            spark_main=args.spark_main,
-            py_files=args.py_files,
-            use_mysql=args.use_mysql,
-            spark_main_args=args.spark_main_args,
             s3_work_bucket=args.s3_work_bucket,
-            aws_region=args.aws_region,
-            send_success_email_to=args.send_success_email_to)
+            aws_region=args.aws_region)
     else:
         print "Nothing to do"
         parser.print_help()
