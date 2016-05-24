@@ -115,7 +115,7 @@ def _create_steps(job_flow_name=None,
         'Args': ['unzip', zip_file_on_host, '-d', sources_on_host]
       }
     })
-    for i in range(steps):
+    for i in range(num_of_steps):
         steps.append({
           'Name': 'run spark {}'.format(spark_main),
           'ActionOnFailure': 'CANCEL_AND_WAIT',
