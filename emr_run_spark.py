@@ -90,6 +90,10 @@ def _create_steps(job_flow_name=None,
     zip_file_on_host = '{}/{}'.format(sources_on_host, zip_file)
     spark_main_on_host = '{}/{}'.format(sources_on_host, spark_main)
     spark_main_args = spark_main_args.split() if spark_main_args else ['']
+    packages_to_add = []
+    if use_mysql:
+        packages_to_add.append('mysql:mysql-connector-java:5.1.39')
+    packages = ['--packages'] + packages_to_add if packages_to_add else []
 
     steps = []
     steps.append({
@@ -108,40 +112,15 @@ def _create_steps(job_flow_name=None,
         'Args': ['unzip', zip_file_on_host, '-d', sources_on_host]
       }
     })
-    if use_mysql:
-      steps.append({
-        'Name': 'setup - jars 1',
-        'ActionOnFailure': 'CANCEL_AND_WAIT',
-        'HadoopJarStep': {
-          'Jar': 'command-runner.jar',
-          'Args': 'touch /home/hadoop/noop.py'.split()
-        }
-      })
-      steps.append({
-        'Name': 'setup - jars 2',
-        'ActionOnFailure': 'CANCEL_AND_WAIT',
-        'HadoopJarStep': {
-          'Jar': 'command-runner.jar',
-          'Args': 'spark-submit --packages mysql:mysql-connector-java:5.1.38 /home/hadoop/noop.py'.split()
-        }
-      })
-      steps.append({
-        'Name': 'setup - jars 3',
-        'ActionOnFailure': 'CANCEL_AND_WAIT',
-        'HadoopJarStep': {
-          'Jar': 'command-runner.jar',
-          'Args': 'sudo cp /home/hadoop/.ivy2/jars/mysql_mysql-connector-java-5.1.38.jar /usr/lib/hadoop/'.split()
-        }
-      })
     steps.append({
       'Name': 'run spark {}'.format(spark_main),
       'ActionOnFailure': 'CANCEL_AND_WAIT',
       'HadoopJarStep': {
         'Jar': 'command-runner.jar',
-        'Args': ['spark-submit', '--packages',
-                 'mysql:mysql-connector-java:5.1.38', '--py-files',
-                 zip_file_on_host,
-                 spark_main_on_host] + spark_main_args
+        'Args': (['spark-submit'] +
+                 packages +
+                 ['--py-files', zip_file_on_host, spark_main_on_host] +
+                 spark_main_args)
       }
     })
 
@@ -210,7 +189,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
     response = client.run_job_flow(
         Name=job_flow_name,
         LogUri=s3_logs_uri,
-        ReleaseLabel='emr-4.3.0',
+        ReleaseLabel='emr-4.6.0',
         Instances={
           'MasterInstanceType': create_cluster_master_type,
           'SlaveInstanceType': create_cluster_slave_type,
@@ -226,9 +205,16 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
           {
             'Classification': 'spark',
             'Properties': {
-                'maximizeResourceAllocation': 'true'
+               'maximizeResourceAllocation': 'true'
             }
           },
+          {
+            "Classification": "spark-defaults",
+            "Properties": {
+               "spark.dynamicAllocation.enabled": "true",
+               "spark.executor.instances": "0"
+            }
+          }
         ],
         VisibleToAllUsers=True,
         JobFlowRole='EMR_EC2_DefaultRole',
