@@ -16,7 +16,6 @@ def add_step_to_job_flow(job_flow_id=None,
                          spark_main=None,
                          py_files=None,
                          num_of_steps=1,
-                         str_format=None,
                          use_mysql=False,
                          spark_main_args=None,
                          s3_work_bucket=None,
@@ -31,7 +30,6 @@ def add_step_to_job_flow(job_flow_id=None,
                           spark_main=spark_main,
                           py_files=py_files,
                           num_of_steps=num_of_steps,
-                          str_format=str_format,
                           use_mysql=use_mysql,
                           spark_main_args=spark_main_args,
                           s3_work_bucket=s3_work_bucket,
@@ -64,7 +62,6 @@ def _create_steps(job_flow_name=None,
                   spark_main=None,
                   py_files=[],
                   num_of_steps=1,
-                  str_format='{:0>3}',
                   spark_main_args=None,
                   s3_work_bucket=None,
                   use_mysql=False,
@@ -127,7 +124,7 @@ def _create_steps(job_flow_name=None,
             'Args': (['spark-submit'] +
                      packages +
                      ['--py-files', zip_file_on_host, spark_main_on_host] +
-                     spark_main_args.format(str_format.format(i)).split())
+                     spark_main_args.format(i).split())
           }
         })
 
@@ -171,7 +168,6 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     create_cluster_keep_alive_when_done=None,
                                     python_path=None,
                                     num_of_steps=1,
-                                    str_format='{:0>3}',
                                     spark_main=None,
                                     py_files=None,
                                     spark_main_args=None,
@@ -190,7 +186,6 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                           spark_main=spark_main,
                           py_files=py_files,
                           num_of_steps=num_of_steps,
-                          str_format=str_format,
                           spark_main_args=spark_main_args,
                           s3_work_bucket=s3_work_bucket,
                           use_mysql=use_mysql,
@@ -325,7 +320,6 @@ if __name__ == '__main__':
     parser.add_argument('--send_success_email_to', default=None,
                         help='Email address to send on success')
     parser.add_argument('--num_of_steps', default=1, type=int)
-    parser.add_argument('--str_format', default='{:0>3}', type=int)
 
     args = parser.parse_args()
 
@@ -335,7 +329,6 @@ if __name__ == '__main__':
                              spark_main=args.spark_main,
                              spark_main_args=args.spark_main_args,
                              num_of_steps=args.num_of_steps,
-                             str_format=args.str_format,
                              py_files=args.py_files,
                              use_mysql=args.use_mysql,
                              s3_work_bucket=args.s3_work_bucket,
@@ -356,7 +349,6 @@ if __name__ == '__main__':
             use_mysql=args.use_mysql,
             spark_main_args=args.spark_main_args,
             num_of_steps=args.num_of_steps,
-            str_format=args.str_format,
             s3_work_bucket=args.s3_work_bucket,
             aws_region=args.aws_region,
             send_success_email_to=args.send_success_email_to)
