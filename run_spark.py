@@ -159,6 +159,7 @@ def create_cluster(name=None,
                    slave_type=None,
                    num_hosts=1,
                    release_label='emr-4.6.0',
+                   bid_price=None,
                    ec2_key_name=None,
                    ec2_subnet_id=None,
                    setup_debug=None,
@@ -172,17 +173,14 @@ def create_cluster(name=None,
     s3_logs_uri = 's3n://{}/logs/{}/'.format(s3_work_bucket, getpass.getuser())
     job_flow_name = _create_job_flow_name(name)
     client = _get_client(aws_region)
-    response = client.run_job_flow(
-            Name=job_flow_name,
-            LogUri=s3_logs_uri,
-            ReleaseLabel=release_label,
-            Instances={
+    if bid_price is not None:
+        instances = {
                 'InstanceGroups': [
                     {
                         'Name': 'EmrMaster',
                         'Market': 'SPOT',
                         'InstanceRole': 'MASTER',
-                        'BidPrice': '0.05',
+                        'BidPrice': bid_price,
                         'InstanceType': master_type,
                         'InstanceCount': 1,
                         },
@@ -192,34 +190,50 @@ def create_cluster(name=None,
                         'InstanceRole': 'CORE',
                         'BidPrice': '0.05',
                         'InstanceType': slave_type,
-                        'InstanceCount': num_hosts-1,
+                        'InstanceCount': num_hosts,
                         },
                     ],
                 'Ec2KeyName': ec2_key_name,
                 'KeepJobFlowAliveWhenNoSteps': keep_alive_when_done,
                 'TerminationProtected': False,
                 'Ec2SubnetId': ec2_subnet_id
-                },
-            Applications=[{'Name': 'Ganglia'}, {'Name': 'Spark'}],
-            Configurations=[
-                {
-                    'Classification': 'spark',
-                    'Properties': {
-                        'maximizeResourceAllocation': 'true'
+                }
+    else:
+        instances = {
+                'MasterInstanceType': master_type,
+                'SlaveInstanceType': slave_type,
+                'InstanceCount': num_hosts,
+                'Ec2KeyName': ec2_key_name,
+                'KeepJobFlowAliveWhenNoSteps': keep_alive_when_done,
+                'TerminationProtected': False,
+                'Ec2SubnetId': ec2_subnet_id,
+                }
+
+    response = client.run_job_flow(
+                Name=job_flow_name,
+                LogUri=s3_logs_uri,
+                ReleaseLabel=release_label,
+                Instances=instances,
+                Applications=[{'Name': 'Ganglia'}, {'Name': 'Spark'}],
+                Configurations=[
+                    {
+                        'Classification': 'spark',
+                        'Properties': {
+                            'maximizeResourceAllocation': 'true'
+                            }
+                        },
+                    {
+                        "Classification": "spark-defaults",
+                        "Properties": {
+                            "spark.dynamicAllocation.enabled": "true",
+                            "spark.executor.instances": "0"
+                            }
                         }
-                    },
-                {
-                    "Classification": "spark-defaults",
-                    "Properties": {
-                        "spark.dynamicAllocation.enabled": "true",
-                        "spark.executor.instances": "0"
-                        }
-                    }
-                ],
-            VisibleToAllUsers=True,
-            JobFlowRole='EMR_EC2_DefaultRole',
-            ServiceRole='EMR_DefaultRole'
-            )
+                    ],
+                VisibleToAllUsers=True,
+                JobFlowRole='EMR_EC2_DefaultRole',
+                ServiceRole='EMR_DefaultRole'
+                )
     job_flow_id = response['JobFlowId']
     logging.info('Created Job Flow: {}'.format(job_flow_id))
     _wait_for_job_flow(aws_region, job_flow_id)
