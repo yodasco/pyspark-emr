@@ -17,7 +17,7 @@ def add_step_to_job_flow(job_flow_id=None,
                          python_path=None,
                          spark_main=None,
                          py_files=None,
-                         use_mysql=False,
+                         packages=None,
                          spark_main_args=None,
                          s3_work_bucket=None,
                          aws_region=None,
@@ -30,7 +30,7 @@ def add_step_to_job_flow(job_flow_id=None,
                           python_path=python_path,
                           spark_main=spark_main,
                           py_files=py_files,
-                          use_mysql=use_mysql,
+                          packages=packages,
                           spark_main_args=spark_main_args,
                           s3_work_bucket=s3_work_bucket,
                           send_success_email_to=send_success_email_to)
@@ -63,7 +63,7 @@ def _create_steps(job_flow_name=None,
                   py_files=[],
                   spark_main_args=None,
                   s3_work_bucket=None,
-                  use_mysql=False,
+                  packages=[],
                   send_success_email_to=None):
     assert(python_path)
     assert(spark_main)
@@ -92,10 +92,7 @@ def _create_steps(job_flow_name=None,
     zip_file_on_host = '{}/{}'.format(sources_on_host, zip_file)
     spark_main_on_host = '{}/{}'.format(sources_on_host, spark_main)
     spark_main_args = spark_main_args.split() if spark_main_args else ['']
-    packages_to_add = []
-    if use_mysql:
-        packages_to_add.append('mysql:mysql-connector-java:5.1.39')
-    packages = ['--packages'] + packages_to_add if packages_to_add else []
+    packages = (['--packages'] + packages) if packages else []
 
     steps = []
     steps.append({
@@ -173,7 +170,7 @@ def create_cluster(name=None,
     s3_logs_uri = 's3n://{}/logs/{}/'.format(s3_work_bucket, getpass.getuser())
     job_flow_name = _create_job_flow_name(name)
     client = _get_client(aws_region)
-    if bid_price is not None:
+    if bid_price:
         instances = {
                 'InstanceGroups': [
                     {
@@ -188,7 +185,7 @@ def create_cluster(name=None,
                         'Name': 'EmrCore',
                         'Market': 'SPOT',
                         'InstanceRole': 'CORE',
-                        'BidPrice': '0.05',
+                        'BidPrice': bid_price,
                         'InstanceType': slave_type,
                         'InstanceCount': num_hosts,
                         },
@@ -368,38 +365,41 @@ def _wait_for_job_flow(aws_region, job_flow_id, step_ids=[]):
                         type=int,
                         default=1)
     parser.add_argument('--create_cluster_ec2_key_name',
-                        help='Keyfile when ' + 'you want to create a new cluster and connect to it')
+                        help='Keyfile when you want to create a new cluster and connect to it')
     parser.add_argument('--create_cluster_ec2_subnet_id', help='')
-    parser.add_argument('--create_cluster_keep_alive_when_done', default=False,
-            action='store_true',
-            help='Terminate the cluster when execution is done')
+    parser.add_argument('--create_cluster_keep_alive_when_done',
+                        default=False,
+                        action='store_true',
+                        help='Terminate the cluster when execution is done')
     parser.add_argument('--create_cluster_setup_debug', default=False,
-            help='Whether to setup the cluster for debugging',
-            action='store_true')
+                        help='Whether to setup the cluster for debugging',
+                        action='store_true')
 
     parser.add_argument('--aws_region', help='AWS region', required=False)
 
     parser.add_argument('--job_flow_id',
-            help='Job flow ID (EMR cluster) to submit to')
+                        help='Job flow ID (EMR cluster) to submit to')
     parser.add_argument('--python_path',
-            help='Path to python files to zip and upload to the' +
-            ' server and add to the python path. This should ' +
-            'include the python_main file`')
+                        help='Path to python files to zip and upload to the' +
+                        ' server and add to the python path. This should ' +
+                        'include the python_main file`')
     parser.add_argument('--spark_main',
-            help='Main python file for spark')
+                        help='Main python file for spark')
     parser.add_argument('--spark_main_args',
-            help='Arguments passed to your spark script')
+                        help='Arguments passed to your spark script')
     parser.add_argument('--s3_work_bucket', required=False,
-            help='Name of s3 bucket where sources and logs are ' +
-            'uploaded')
+                        help='Name of s3 bucket where sources and logs are ' +
+                        'uploaded')
     parser.add_argument('--py-files',
                         nargs='*',
                         dest='py_files',
                         help='A list of py or zip or egg files to pass over ' +
                         'to spark-submit')
-    parser.add_argument('--use_mysql',
+    parser.add_argument('--packages',
                         default=False,
-                        help='Whether to setup mysql dataframes jar',
+                        help='additional packages to add, commacseperated, \
+                             for example: mysql:mysql-connector-java:5.1.39 \
+                             or foo,bar,baz',
                         action='store_true')
     parser.add_argument('--send_success_email_to',
                         default=None,
@@ -425,6 +425,7 @@ def _wait_for_job_flow(aws_region, job_flow_id, step_ids=[]):
                 create_cluster_ec2_key_name=args.create_cluster_ec2_key_name,
                 create_cluster_ec2_subnet_id=args.create_cluster_ec2_subnet_id,
                 create_cluster_setup_debug=args.create_cluster_setup_debug,
+                bid_price=args.bid_price,
                 create_cluster_keep_alive_when_done=args.create_cluster_keep_alive_when_done,
                 s3_work_bucket=args.s3_work_bucket,
                 aws_region=args.aws_region)
