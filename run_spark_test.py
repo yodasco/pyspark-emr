@@ -20,5 +20,5 @@ def test_add_steps():
                                    py_files=[],
                                    spark_main_args=None,
                                    s3_work_bucket=None,
-                                   use_mysql=False,
+                                   packages=[],
                                    send_success_email_to=None)
