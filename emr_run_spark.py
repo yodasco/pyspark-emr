@@ -204,8 +204,14 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                         },
                     {
                         'Name': 'EmrCore',
-                        'Market': 'SPOT',
                         'InstanceRole': 'CORE',
+                        'InstanceType': create_cluster_slave_type,
+                        'InstanceCount': 2
+                        },
+                    {
+                        'Name': 'EmrTask',
+                        'Market': 'SPOT',
+                        'InstanceRole': 'TASK',
                         'BidPrice': bid_price,
                         'InstanceType': create_cluster_slave_type,
                         'InstanceCount': create_cluster_num_hosts
