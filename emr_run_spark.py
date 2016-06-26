@@ -166,6 +166,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     create_cluster_ec2_subnet_id=None,
                                     create_cluster_setup_debug=None,
                                     create_cluster_keep_alive_when_done=None,
+                                    bid_price=None,
                                     python_path=None,
                                     num_of_steps=1,
                                     spark_main=None,
@@ -192,19 +193,46 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                           send_success_email_to=send_success_email_to)
     client = _get_client(aws_region)
     debug_steps = _create_debug_steps(create_cluster_setup_debug)
-    response = client.run_job_flow(
-        Name=job_flow_name,
-        LogUri=s3_logs_uri,
-        ReleaseLabel='emr-4.6.0',
-        Instances={
+    if bid_price:
+        instances = {
+                'InstanceGroups': [
+                    {
+                        'Name': 'EmrMaster',
+                        'Market': 'SPOT',
+                        'InstanceRole': 'MASTER',
+                        'BidPrice': bid_price,
+                        'InstanceType': create_cluster_master_type,
+                        'InstanceCount': 1,
+                        },
+                    {
+                        'Name': 'EmrCore',
+                        'Market': 'SPOT',
+                        'InstanceRole': 'CORE',
+                        'BidPrice': bid_price,
+                        'InstanceType': create_cluster_slave_type,
+                        'InstanceCount': create_cluster_num_hosts,
+                        },
+                    ],
+                'Ec2KeyName': create_cluster_ec2_key_name,
+                'KeepJobFlowAliveWhenNoSteps': create_cluster_keep_alive_when_done,
+                'TerminationProtected': False,
+                'Ec2SubnetId': create_cluster_ec2_subnet_id
+                }
+    else:
+        instances = {
           'MasterInstanceType': create_cluster_master_type,
           'SlaveInstanceType': create_cluster_slave_type,
           'InstanceCount': create_cluster_num_hosts,
           'Ec2KeyName': create_cluster_ec2_key_name,
           'KeepJobFlowAliveWhenNoSteps': create_cluster_keep_alive_when_done,
           'TerminationProtected': False,
-          'Ec2SubnetId': create_cluster_ec2_subnet_id,
-        },
+          'Ec2SubnetId': create_cluster_ec2_subnet_id
+        }
+    response = client.run_job_flow(
+        Name=job_flow_name,
+        LogUri=s3_logs_uri,
+        ReleaseLabel='emr-4.6.0',
+        Instances=instances,
         Steps=debug_steps + steps,
         Applications=[{'Name': 'Ganglia'}, {'Name': 'Spark'}],
         Configurations=[
@@ -320,6 +348,7 @@ if __name__ == '__main__':
     parser.add_argument('--send_success_email_to', default=None,
                         help='Email address to send on success')
     parser.add_argument('--num_of_steps', default=1, type=int)
+    parser.add_argument('--bid_price', default=None)
 
     args = parser.parse_args()
 
@@ -343,6 +372,7 @@ if __name__ == '__main__':
             create_cluster_ec2_subnet_id=args.create_cluster_ec2_subnet_id,
             create_cluster_setup_debug=args.create_cluster_setup_debug,
             create_cluster_keep_alive_when_done=args.create_cluster_keep_alive_when_done,
+            bid_price=args.bid_price,
             python_path=args.python_path,
             spark_main=args.spark_main,
             py_files=args.py_files,
