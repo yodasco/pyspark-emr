@@ -198,11 +198,9 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                 'InstanceGroups': [
                     {
                         'Name': 'EmrMaster',
-                        'Market': 'SPOT',
                         'InstanceRole': 'MASTER',
-                        'BidPrice': bid_price,
                         'InstanceType': create_cluster_master_type,
-                        'InstanceCount': 1,
+                        'InstanceCount': 1
                         },
                     {
                         'Name': 'EmrCore',
@@ -210,7 +208,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                         'InstanceRole': 'CORE',
                         'BidPrice': bid_price,
                         'InstanceType': create_cluster_slave_type,
-                        'InstanceCount': create_cluster_num_hosts,
+                        'InstanceCount': create_cluster_num_hosts
                         },
                     ],
                 'Ec2KeyName': create_cluster_ec2_key_name,
