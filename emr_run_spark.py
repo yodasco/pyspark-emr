@@ -41,7 +41,7 @@ def add_step_to_job_flow(job_flow_id=None,
     )
     step_ids = step_response['StepIds']
     print "Created steps: {}".format(step_ids)
-    _wait_for_job_flow(aws_region, job_flow_id, step_ids)
+    print "job_flow_id: {}".format(job_flow_id)
 
 
 def _create_job_flow_name(spark_main):
@@ -131,7 +131,7 @@ def _create_steps(job_flow_name=None,
     if send_success_email_to is not None:
         steps.append({
           'Name': 'Send success email to {}'.format(send_success_email_to),
-          'ActionOnFailure': 'CANCEL_AND_WAIT',
+          'ActionOnFailure': 'CONTINUE',
           'HadoopJarStep': {
             'Jar': 'command-runner.jar',
             'Args': ['aws', 'ses', 'send-email', '--from', 'ops@yodas.com',
@@ -234,7 +234,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
     print '''Waiting for steps to finish. Visit on aws portal:
         https://{0}.console.aws.amazon.com/elasticmapreduce/home?region={0}#cluster-details:{1}'''.format(aws_region, job_flow_id)
     print "Find logs here: {0}{1}/".format(s3_logs_uri, job_flow_id)
-    _wait_for_job_flow(aws_region, job_flow_id, step_ids)
+    return job_flow_id
 
 
 def _get_step_ids_for_job_flow(job_flow_id, client):
@@ -245,7 +245,7 @@ def _get_step_ids_for_job_flow(job_flow_id, client):
 
 def _wait_for_job_flow(aws_region, job_flow_id, step_ids=[]):
     while True:
-        time.sleep(5)
+        time.sleep(30)
         client = _get_client(aws_region)
         cluster = client.describe_cluster(ClusterId=job_flow_id)
         state = cluster['Cluster']['Status']['State']
@@ -335,7 +335,7 @@ if __name__ == '__main__':
                              aws_region=args.aws_region,
                              send_success_email_to=args.send_success_email_to)
     elif args.create_cluster:
-        create_cluster_and_run_job_flow(
+        job_flow_id = create_cluster_and_run_job_flow(
             create_cluster_master_type=args.create_cluster_master_type,
             create_cluster_slave_type=args.create_cluster_slave_type,
             create_cluster_num_hosts=args.create_cluster_num_hosts,
@@ -352,6 +352,8 @@ if __name__ == '__main__':
             s3_work_bucket=args.s3_work_bucket,
             aws_region=args.aws_region,
             send_success_email_to=args.send_success_email_to)
+        with open('.job_flow_id.txt', 'w') as f:
+            f.write(job_flow_id)
     else:
         print "Nothing to do"
         parser.print_help()
