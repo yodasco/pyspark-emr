@@ -194,6 +194,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
     client = _get_client(aws_region)
     debug_steps = _create_debug_steps(create_cluster_setup_debug)
     if bid_price:
+        num_cores = create_cluster_num_hosts / 3
         instances = {
                 'InstanceGroups': [
                     {
@@ -206,7 +207,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                         'Name': 'EmrCore',
                         'InstanceRole': 'CORE',
                         'InstanceType': create_cluster_slave_type,
-                        'InstanceCount': 2
+                        'InstanceCount': num_cores
                         },
                     {
                         'Name': 'EmrTask',
@@ -214,7 +215,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                         'InstanceRole': 'TASK',
                         'BidPrice': bid_price,
                         'InstanceType': create_cluster_slave_type,
-                        'InstanceCount': create_cluster_num_hosts
+                        'InstanceCount': create_cluster_num_hosts - num_cores
                         },
                     ],
                 'Ec2KeyName': create_cluster_ec2_key_name,
