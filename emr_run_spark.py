@@ -136,7 +136,8 @@ def _create_steps(job_flow_name=None,
             'Jar': 'command-runner.jar',
             'Args': ['aws', 'ses', 'send-email', '--from', 'ops@yodas.com',
                      '--to', send_success_email_to, '--subject',
-                     'EMR COMPLETED SUCCESSFULY', '--text', 'Life is good']
+                     'EMR COMPLETED SUCCESSFULY JOB STEP {}'.format(spark_main),
+                     '--text', 'Life is good']
           }
         })
 
@@ -206,6 +207,8 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                     {
                         'Name': 'EmrCore',
                         'InstanceRole': 'CORE',
+                        'Market': 'SPOT',
+                        'BidPrice': str(float(bid_price) * 1.25),
                         'InstanceType': create_cluster_slave_type,
                         'InstanceCount': num_cores
                         },
