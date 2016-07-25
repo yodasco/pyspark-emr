@@ -74,7 +74,10 @@ def _create_steps(job_flow_name=None,
     sources_rel_path = job_flow_name
     sources_on_host = '/home/hadoop/{}'.format(sources_rel_path)
     local_zip_file = '/tmp/{}'.format(zip_file)
-    python_path_files = _ls_recursive(python_path, '.py')
+    # Collect all files except those that start with . (and dirs that
+    # start with .)
+    python_path_files = filter(lambda f: not f.startswith('./.'),
+                               _ls_recursive(python_path, '.py'))
     with zipfile.ZipFile(local_zip_file, 'w') as myzip:
         for f in python_path_files:
             myzip.write(f)
