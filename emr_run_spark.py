@@ -115,7 +115,9 @@ def _create_steps(job_flow_name=None,
         'Args': ['unzip', zip_file_on_host, '-d', sources_on_host]
       }
     })
+
     for i in range(num_of_steps):
+        main_args = [''] if spark_main_args is None else spark_main_args.format(i).split()
         steps.append({
           'Name': 'run spark {}'.format(spark_main),
           'ActionOnFailure': 'CANCEL_AND_WAIT',
@@ -124,7 +126,7 @@ def _create_steps(job_flow_name=None,
             'Args': (['spark-submit'] +
                      packages +
                      ['--py-files', zip_file_on_host, spark_main_on_host] +
-                     spark_main_args.format(i).split())
+                     main_args)
           }
         })
 
@@ -176,7 +178,8 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     s3_work_bucket=None,
                                     use_mysql=False,
                                     aws_region=None,
-                                    send_success_email_to=None):
+                                    send_success_email_to=None,
+                                    bootstrap_script=None):
     assert(create_cluster_master_type)
     assert(create_cluster_slave_type)
     assert(aws_region)
@@ -236,11 +239,16 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
           'TerminationProtected': False,
           'Ec2SubnetId': create_cluster_ec2_subnet_id
         }
+    bootstrap_actions = _get_bootstrap_actions(
+        s3_work_bucket, job_flow_name, bootstrap_script=bootstrap_script)
+    # run_job_flow documented here
+    # http://boto3.readthedocs.io/en/latest/reference/services/emr.html
     response = client.run_job_flow(
         Name=job_flow_name,
         LogUri=s3_logs_uri,
         ReleaseLabel='emr-4.6.0',
         Instances=instances,
+        BootstrapActions=bootstrap_actions,
         Steps=debug_steps + steps,
         Applications=[{'Name': 'Ganglia'}, {'Name': 'Spark'}],
         Configurations=[
@@ -271,6 +279,29 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
         https://{0}.console.aws.amazon.com/elasticmapreduce/home?region={0}#cluster-details:{1}'''.format(aws_region, job_flow_id)
     print "Find logs here: {0}{1}/".format(s3_logs_uri, job_flow_id)
     return job_flow_id
+
+
+def _get_bootstrap_actions(s3_work_bucket, job_flow_name,
+                           bootstrap_script=None):
+    actions = []
+    if bootstrap_script is not None:
+        script_on_s3 = 's3://{}/sources/{}/{}'.format(s3_work_bucket,
+                                                      job_flow_name,
+                                                      bootstrap_script)
+        print 'Storing bootstrap script on {}'.format(script_on_s3)
+        subprocess.check_call('aws s3 cp {} {}'.format(bootstrap_script,
+                                                       script_on_s3),
+                              shell=True)
+        actions.append(
+            {
+                'Name': 'Run user provided bootstrap action \
+                {}'.format(bootstrap_script),
+                'ScriptBootstrapAction': {
+                    'Path': script_on_s3
+                }
+            },
+        )
+    return actions
 
 
 def _get_step_ids_for_job_flow(job_flow_id, client):
@@ -357,6 +388,9 @@ if __name__ == '__main__':
                         help='Email address to send on success')
     parser.add_argument('--num_of_steps', default=1, type=int)
     parser.add_argument('--bid_price', default=None)
+    parser.add_argument('--bootstrap_script', default=None,
+                        help='''Optional path to cluster wide bootstrap script
+                        Valid only when creating a new cluster''')
 
     args = parser.parse_args()
 
@@ -389,7 +423,9 @@ if __name__ == '__main__':
             num_of_steps=args.num_of_steps,
             s3_work_bucket=args.s3_work_bucket,
             aws_region=args.aws_region,
-            send_success_email_to=args.send_success_email_to)
+            send_success_email_to=args.send_success_email_to,
+            bootstrap_script=args.bootstrap_script
+        )
         with open('.job_flow_id.txt', 'w') as f:
             f.write(job_flow_id)
     else:
