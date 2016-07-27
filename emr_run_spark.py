@@ -17,6 +17,7 @@ def add_step_to_job_flow(job_flow_id=None,
                          py_files=None,
                          num_of_steps=1,
                          use_mysql=False,
+                         spark_packages=None,
                          spark_main_args=None,
                          s3_work_bucket=None,
                          aws_region=None,
@@ -31,6 +32,7 @@ def add_step_to_job_flow(job_flow_id=None,
                           py_files=py_files,
                           num_of_steps=num_of_steps,
                           use_mysql=use_mysql,
+                          spark_packages=spark_packages,
                           spark_main_args=spark_main_args,
                           s3_work_bucket=s3_work_bucket,
                           send_success_email_to=send_success_email_to)
@@ -65,6 +67,7 @@ def _create_steps(job_flow_name=None,
                   spark_main_args=None,
                   s3_work_bucket=None,
                   use_mysql=False,
+                  spark_packages=None,
                   send_success_email_to=None):
     assert(python_path)
     assert(spark_main)
@@ -95,10 +98,11 @@ def _create_steps(job_flow_name=None,
     subprocess.check_call('aws s3 cp {} {}'.format(local_zip_file, zip_file_on_s3), shell=True)
     zip_file_on_host = '{}/{}'.format(sources_on_host, zip_file)
     spark_main_on_host = '{}/{}'.format(sources_on_host, spark_main)
-    # spark_main_args = spark_main_args.split() if spark_main_args else ['']
     packages_to_add = []
     if use_mysql:
         packages_to_add.append('mysql:mysql-connector-java:5.1.39')
+    if spark_packages is not None:
+        packages_to_add += spark_packages.split(',')
     packages = ['--packages'] + packages_to_add if packages_to_add else []
 
     steps = []
@@ -180,6 +184,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     spark_main_args=None,
                                     s3_work_bucket=None,
                                     use_mysql=False,
+                                    spark_packages=None,
                                     aws_region=None,
                                     send_success_email_to=None,
                                     bootstrap_script=None):
@@ -197,6 +202,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                           spark_main_args=spark_main_args,
                           s3_work_bucket=s3_work_bucket,
                           use_mysql=use_mysql,
+                          spark_packages=spark_packages,
                           send_success_email_to=send_success_email_to)
     client = _get_client(aws_region)
     debug_steps = _create_debug_steps(create_cluster_setup_debug)
@@ -385,8 +391,12 @@ if __name__ == '__main__':
                         help='A list of py or zip or egg files to pass over ' +
                         'to spark-submit')
     parser.add_argument('--use_mysql', default=False,
-                        help='Whether to setup mysql dataframes jar',
+                        help='''Whether to setup mysql dataframes jar.
+                        DEPRACATED. use --spark_packages instead''',
                         action='store_true')
+    parser.add_argument('--spark_packages',
+                        help='''Spark packages to install (maven coordinates).
+                        Coma separated list''')
     parser.add_argument('--send_success_email_to', default=None,
                         help='Email address to send on success')
     parser.add_argument('--num_of_steps', default=1, type=int)
@@ -405,6 +415,7 @@ if __name__ == '__main__':
                              num_of_steps=args.num_of_steps,
                              py_files=args.py_files,
                              use_mysql=args.use_mysql,
+                             spark_packages=args.spark_packages,
                              s3_work_bucket=args.s3_work_bucket,
                              aws_region=args.aws_region,
                              send_success_email_to=args.send_success_email_to)
@@ -422,6 +433,7 @@ if __name__ == '__main__':
             spark_main=args.spark_main,
             py_files=args.py_files,
             use_mysql=args.use_mysql,
+            spark_packages=args.spark_packages,
             spark_main_args=args.spark_main_args,
             num_of_steps=args.num_of_steps,
             s3_work_bucket=args.s3_work_bucket,
