@@ -201,7 +201,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
     client = _get_client(aws_region)
     debug_steps = _create_debug_steps(create_cluster_setup_debug)
     if bid_price:
-        num_cores = create_cluster_num_hosts / 3
+        num_cores = (create_cluster_num_hosts / 3) or 1
         instances = {
                 'InstanceGroups': [
                     {
@@ -249,7 +249,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
     response = client.run_job_flow(
         Name=job_flow_name,
         LogUri=s3_logs_uri,
-        ReleaseLabel='emr-4.6.0',
+        ReleaseLabel='emr-4.7.2',
         Instances=instances,
         BootstrapActions=bootstrap_actions,
         Steps=debug_steps + steps,
