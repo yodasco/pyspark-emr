@@ -103,7 +103,10 @@ def _create_steps(job_flow_name=None,
         packages_to_add.append('mysql:mysql-connector-java:5.1.39')
     if spark_packages is not None:
         packages_to_add += spark_packages.split(',')
-    packages = ['--packages'] + packages_to_add if packages_to_add else []
+    if len(packages_to_add) > 0:
+        packages = ['--packages', ','.join(packages_to_add)]
+    else:
+        packages = []
 
     steps = []
     steps.append({
