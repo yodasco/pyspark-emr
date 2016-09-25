@@ -382,7 +382,7 @@ if __name__ == '__main__':
     parser.add_argument('--python_path', required=True,
                         help='Path to python files to zip and upload to the' +
                         ' server and add to the python path. This should ' +
-                        'include the python_main file`')
+                        'include the spark_main file`')
     parser.add_argument('--spark_main', required=True,
                         help='Main python file for spark')
     parser.add_argument('--spark_main_args',
