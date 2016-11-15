@@ -190,7 +190,8 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     spark_packages=None,
                                     aws_region=None,
                                     send_success_email_to=None,
-                                    bootstrap_script=None):
+                                    bootstrap_script=None,
+                                    emr_release_label=None):
     assert(create_cluster_master_type)
     assert(create_cluster_slave_type)
     assert(aws_region)
@@ -218,6 +219,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                         'InstanceRole': 'MASTER',
                         'InstanceType': create_cluster_master_type,
                         'InstanceCount': 1
+
                         },
                     {
                         'Name': 'EmrCore',
@@ -258,7 +260,7 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
     response = client.run_job_flow(
         Name=job_flow_name,
         LogUri=s3_logs_uri,
-        ReleaseLabel='emr-4.7.2',
+        ReleaseLabel=emr_release_label,
         Instances=instances,
         BootstrapActions=bootstrap_actions,
         Steps=debug_steps + steps,
@@ -377,6 +379,9 @@ if __name__ == '__main__':
 
     parser.add_argument('--aws_region', help='AWS region', required=True)
 
+    parser.add_argument('--emr_release_label',
+                        help='emr release label version',
+                        default='emr-4.8.0')
     parser.add_argument('--job_flow_id',
                         help='Job flow ID (EMR cluster) to submit to')
     parser.add_argument('--python_path', required=True,
@@ -442,7 +447,8 @@ if __name__ == '__main__':
             s3_work_bucket=args.s3_work_bucket,
             aws_region=args.aws_region,
             send_success_email_to=args.send_success_email_to,
-            bootstrap_script=args.bootstrap_script
+            bootstrap_script=args.bootstrap_script,
+            emr_release_label=args.emr_release_label
         )
         with open('.job_flow_id.txt', 'w') as f:
             f.write(job_flow_id)
