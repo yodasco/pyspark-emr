@@ -21,7 +21,8 @@ def add_step_to_job_flow(job_flow_id=None,
                          spark_main_args=None,
                          s3_work_bucket=None,
                          aws_region=None,
-                         send_success_email_to=None):
+                         send_success_email_to=None,
+                         conf_args=None):
     assert(job_flow_id)
     assert(aws_region)
 
@@ -35,7 +36,8 @@ def add_step_to_job_flow(job_flow_id=None,
                           spark_packages=spark_packages,
                           spark_main_args=spark_main_args,
                           s3_work_bucket=s3_work_bucket,
-                          send_success_email_to=send_success_email_to)
+                          send_success_email_to=send_success_email_to,
+                          conf=conf_args)
     client = _get_client(aws_region)
     step_response = client.add_job_flow_steps(
       JobFlowId=job_flow_id,
@@ -68,6 +70,7 @@ def _create_steps(job_flow_name=None,
                   s3_work_bucket=None,
                   use_mysql=False,
                   spark_packages=None,
+                  conf=None,
                   send_success_email_to=None):
     assert(python_path)
     assert(spark_main)
@@ -108,6 +111,14 @@ def _create_steps(job_flow_name=None,
     else:
         packages = []
 
+    conf_to_add = []
+    if conf is not None:
+        conf_to_add += conf.split(',')
+    if len(conf_to_add) > 0:
+        conf_ = ['--conf', ','.join(conf_to_add)]
+    else:
+        conf_ = []
+
     steps = []
     steps.append({
       'Name': 'setup - copy files',
@@ -134,6 +145,7 @@ def _create_steps(job_flow_name=None,
           'HadoopJarStep': {
             'Jar': 'command-runner.jar',
             'Args': (['spark-submit'] +
+                     conf_ +
                      packages +
                      ['--py-files', zip_file_on_host, spark_main_on_host] +
                      main_args)
@@ -191,7 +203,8 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                                     aws_region=None,
                                     send_success_email_to=None,
                                     bootstrap_script=None,
-                                    emr_release_label=None):
+                                    emr_release_label=None,
+                                    conf_args=None):
     assert(create_cluster_master_type)
     assert(create_cluster_slave_type)
     assert(aws_region)
@@ -207,7 +220,8 @@ def create_cluster_and_run_job_flow(create_cluster_master_type=None,
                           s3_work_bucket=s3_work_bucket,
                           use_mysql=use_mysql,
                           spark_packages=spark_packages,
-                          send_success_email_to=send_success_email_to)
+                          send_success_email_to=send_success_email_to,
+                          conf=conf_args)
     client = _get_client(aws_region)
     debug_steps = _create_debug_steps(create_cluster_setup_debug)
     if bid_price:
@@ -387,7 +401,7 @@ if __name__ == '__main__':
     parser.add_argument('--python_path', required=True,
                         help='Path to python files to zip and upload to the' +
                         ' server and add to the python path. This should ' +
-                        'include the spark_main file`')
+                        'include the python_main file`')
     parser.add_argument('--spark_main', required=True,
                         help='Main python file for spark')
     parser.add_argument('--spark_main_args',
@@ -409,6 +423,7 @@ if __name__ == '__main__':
                         help='Email address to send on success')
     parser.add_argument('--num_of_steps', default=1, type=int)
     parser.add_argument('--bid_price', default=None)
+    parser.add_argument('--conf_args', default=None, help='configuraion for spark-submit comma seperated')
     parser.add_argument('--bootstrap_script', default=None,
                         help='''Optional path to cluster wide bootstrap script
                         Valid only when creating a new cluster''')
@@ -426,7 +441,8 @@ if __name__ == '__main__':
                              spark_packages=args.spark_packages,
                              s3_work_bucket=args.s3_work_bucket,
                              aws_region=args.aws_region,
-                             send_success_email_to=args.send_success_email_to)
+                             send_success_email_to=args.send_success_email_to,
+                             conf_args=args.conf_args)
     elif args.create_cluster:
         job_flow_id = create_cluster_and_run_job_flow(
             create_cluster_master_type=args.create_cluster_master_type,
@@ -448,10 +464,11 @@ if __name__ == '__main__':
             aws_region=args.aws_region,
             send_success_email_to=args.send_success_email_to,
             bootstrap_script=args.bootstrap_script,
-            emr_release_label=args.emr_release_label
-        )
+            emr_release_label=args.emr_release_label,
+            conf_args=args.conf_args)
         with open('.job_flow_id.txt', 'w') as f:
             f.write(job_flow_id)
     else:
         print "Nothing to do"
         parser.print_help()
+
